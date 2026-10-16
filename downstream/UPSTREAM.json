@@ -4,6 +4,16 @@
   "commit": "88dcbf7f1614a67c3b36b848ee3592dfa92ada36",
   "go": "1.26.9",
   "govulncheck": "v1.9.0",
-  "downstream_version": "v1.19.32-dns.1-rc.2",
-  "owner": "i-am-an-op"
+  "downstream_version": "v1.19.32-dns.1-rc.3",
+  "owner": "i-am-an-op",
+  "backports": [
+    {
+      "commit": "80101933c007185c7a72efb3a377482b2bb70246",
+      "reason": "Bound abandoned DoH bootstrap dials and TLS handshakes, present in user-updated alpha baseline"
+    },
+    {
+      "commit": "e4dd968de9e10ecc6770acfafd306edeb578eb52",
+      "reason": "Preserve Fake-IP allocation cursor on pool cloning, present in user-updated alpha baseline"
+    }
+  ]
 }
