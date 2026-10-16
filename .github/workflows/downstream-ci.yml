@@ -35,7 +35,9 @@ jobs:
       - name: Verify dependencies
         run: go mod download && go mod verify
       - name: Upstream tests with retained gVisor support
-        run: go test -tags with_gvisor -timeout 5m ./...
+        # The inherited inbound transport matrix can exceed five minutes on ARM.
+        # Match Go's default budget used by upstream; retain every test.
+        run: go test -tags with_gvisor -timeout 10m ./...
       - name: DNS and configuration race tests
         run: go test -race -tags with_gvisor ./dns ./config ./hub/executor
       - name: Reproducible native build and module inventory
