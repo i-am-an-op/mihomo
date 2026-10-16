@@ -17,7 +17,6 @@ import dns.message
 import dns.query
 import dns.rcode
 import dns.rrset
-import yaml
 import socketserver
 import ssl
 import struct
@@ -153,7 +152,7 @@ def main():
                 relay={'mode':'rule','rules':['MATCH,DIRECT'],'dns':{'enable':True,
                     'listen':'127.0.0.1:17104','enhanced-mode':'redir-host','disable-cache':True,
                     'default-nameserver':['127.0.0.1:17100'],'nameserver':['tcp://127.0.0.1:17100']}}
-                relay_path=d/'relay.yaml';relay_path.write_text(yaml.safe_dump(relay))
+                relay_path=d/'relay.yaml';relay_path.write_text(json.dumps(relay))
                 processes.append(start([a.upstream_mihomo,'-d',str(d/'relay'),'-f',str(relay_path)],d,'relay'))
                 ready(17104)
                 upstream_port=17104
@@ -169,7 +168,7 @@ def main():
                     cfg['dns']['fake-ip-filter']=['+.example']
                 if a.cache_max_size is not None:
                     cfg['dns']['cache-max-size']=a.cache_max_size
-                path=d/(alg+'.yaml'); path.write_text(yaml.safe_dump(cfg))
+                path=d/(alg+'.yaml'); path.write_text(json.dumps(cfg))
                 processes.append(start([a.mihomo, '-d', str(d/alg), '-f', str(path)], d, alg))
                 ready(port)
                 if a.enhanced_mode=='fake-ip':
@@ -205,7 +204,7 @@ def main():
                     {'tag':'main','type':'sequence','args':[{'exec':'$cache'},
                         {'matches':['has_resp'],'exec':'accept'},{'exec':'$forward'}]},
                     {'type':'tcp_server','args':{'entry':'main','listen':'127.0.0.1:17103'}}]}
-                path=d/'mosdns.yaml';path.write_text(yaml.safe_dump(cfg))
+                path=d/'mosdns.yaml';path.write_text(json.dumps(cfg))
                 processes.append(start([a.mosdns,'start','-c',str(path)],d,'mosdns'))
                 r=query(17103,'do.mosdns.example','TXT')
                 check('mosdns: DO reaches upstream',addr(r)=='"do=1"',addr(r))
