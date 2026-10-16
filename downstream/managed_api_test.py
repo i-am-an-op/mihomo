@@ -17,7 +17,7 @@ def main():
     def record(name,ok,detail):checks.append({'test':name,'passed':bool(ok),'observed':detail})
     with tempfile.TemporaryDirectory(prefix='managed-api-') as td:
         root=Path(td);cfg={'mode':'rule','external-controller':'127.0.0.1:19390','rules':['MATCH,DIRECT'],
-            'proxy-groups':[{'name':'TEST','type':'select','proxies':['DIRECT']}],
+            'rule-providers':{'fixture':{'type':'inline','behavior':'domain','payload':['example.org']}},'proxy-groups':[{'name':'TEST','type':'select','proxies':['DIRECT']}],
             'dns':{'enable':True,'listen':'127.0.0.1:19391','disable-cache':True,
             'nameserver':['127.0.0.1:19392'],'default-nameserver':['127.0.0.1:19392']}}
         path=root/'config.json';path.write_text(json.dumps(cfg))
@@ -36,7 +36,7 @@ def main():
                     if request('GET','/version')==200:break
                 except OSError:time.sleep(.05)
             record('read-only version API available',request('GET','/version')==200,{})
-            for method,target in [('PUT','/configs'),('PATCH','/configs'),('POST','/upgrade'),('POST','/restart')]:
+            for method,target in [('PUT','/configs'),('PATCH','/configs'),('POST','/upgrade'),('POST','/restart'),('POST','/configs/geo'),('POST','/upgrade/geo'),('PATCH','/rules/disable'),('PUT','/providers/rules/fixture')]:
                 status=request(method,target,{})
                 record(method+' '+target+' rejected before mutation',status==409,{'status':status})
             record('proxy selection retained',request('PUT','/proxies/TEST',{'name':'DIRECT'})==204,{})

@@ -27,7 +27,7 @@ func configRouter() http.Handler {
 	r.Get("/", getConfigs)
 	if !embedMode { // disallow update/patch configs in embed mode
 		r.Put("/", managedDNSMutation(updateConfigs))
-		r.Post("/geo", updateGeoDatabases)
+		r.Post("/geo", managedDNSMutation(updateGeoDatabases))
 		r.Patch("/", managedDNSMutation(patchConfigs))
 	}
 	return r

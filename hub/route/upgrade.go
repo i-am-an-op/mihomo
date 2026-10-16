@@ -17,7 +17,7 @@ func upgradeRouter() http.Handler {
 	r.Post("/ui", updateUI)
 	if !embedMode { // disallow upgrade core/geo in embed mode
 		r.Post("/", managedDNSMutation(upgradeCore))
-		r.Post("/geo", updateGeoDatabases)
+		r.Post("/geo", managedDNSMutation(updateGeoDatabases))
 	}
 	return r
 }
