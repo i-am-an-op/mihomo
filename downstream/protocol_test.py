@@ -4,8 +4,11 @@ import argparse
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 import datetime
+import hashlib
 import json
+import ipaddress
 import os
+import socket
 from pathlib import Path
 import tempfile
 import time
@@ -14,9 +17,7 @@ import dns.message
 import dns.query
 import dns.rcode
 import dns.rrset
-
-
-
+import yaml
 import socketserver
 import ssl
 import struct
@@ -86,12 +87,17 @@ def start(cmd, directory, name, env=None):
         raise RuntimeError((directory/(name+'.log')).read_text()[-4000:])
     return p, log
 
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--mihomo', required=True)
     ap.add_argument('--mosdns')
     ap.add_argument('--disable-cache', action='store_true')
     ap.add_argument('--expect-fixed', action='store_true')
+    ap.add_argument('--enhanced-mode', choices=['redir-host','fake-ip'], default='redir-host')
+    ap.add_argument('--cache-max-size', type=int)
+    ap.add_argument('--upstream-mihomo', help='Put a patched DNS relay behind the tested frontend')
     ap.add_argument('--output', type=Path, required=True)
     a = ap.parse_args()
     checks, servers, processes = [], [], []
@@ -125,6 +131,15 @@ def main():
         q = dns.message.make_query(name, kind, want_dnssec=do)
         if cd: q.flags |= dns.flags.CD
         return dns.query.tcp(q, '127.0.0.1', port=port, timeout=5)
+    def ready(port):
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            try:
+                with socket.create_connection(('127.0.0.1', port), timeout=.2):
+                    return
+            except OSError:
+                time.sleep(.05)
+        raise TimeoutError('DNS fixture listener did not become ready')
     def addr(r):
         return r.answer[0][0].to_text() if r.answer else ''
     def check(name, ok, observed):
@@ -133,16 +148,35 @@ def main():
         d = Path(td)
         try:
             servers += serve(17100, reply)
+            upstream_port=17100
+            if a.upstream_mihomo:
+                relay={'mode':'rule','rules':['MATCH,DIRECT'],'dns':{'enable':True,
+                    'listen':'127.0.0.1:17104','enhanced-mode':'redir-host','disable-cache':True,
+                    'default-nameserver':['127.0.0.1:17100'],'nameserver':['tcp://127.0.0.1:17100']}}
+                relay_path=d/'relay.yaml';relay_path.write_text(yaml.safe_dump(relay))
+                processes.append(start([a.upstream_mihomo,'-d',str(d/'relay'),'-f',str(relay_path)],d,'relay'))
+                ready(17104)
+                upstream_port=17104
             for i, alg in enumerate(('lru', 'arc')):
                 port = 17101+i
                 cfg = {'ipv6': True, 'mode': 'rule', 'rules': ['MATCH,DIRECT'],
                        'dns': {'enable': True, 'listen': f'127.0.0.1:{port}',
-                               'enhanced-mode': 'redir-host', 'cache-algorithm': alg,
+                               'enhanced-mode': a.enhanced_mode, 'cache-algorithm': alg,
                                'disable-cache': a.disable_cache,
                                'default-nameserver': ['127.0.0.1:17100'],
-                               'nameserver': ['tcp://127.0.0.1:17100']}}
-                path=d/(alg+'.yaml'); path.write_text(json.dumps(cfg))
+                               'nameserver': [f'tcp://127.0.0.1:{upstream_port}']}}
+                if a.enhanced_mode == 'fake-ip':
+                    cfg['dns']['fake-ip-filter']=['+.example']
+                if a.cache_max_size is not None:
+                    cfg['dns']['cache-max-size']=a.cache_max_size
+                path=d/(alg+'.yaml'); path.write_text(yaml.safe_dump(cfg))
                 processes.append(start([a.mihomo, '-d', str(d/alg), '-f', str(path)], d, alg))
+                ready(port)
+                if a.enhanced_mode=='fake-ip':
+                    fake=query(port,'mapping.test')
+                    check(alg+': synthetic mapping remains separate',
+                          ipaddress.ip_address(addr(fake)) in ipaddress.ip_network('198.18.0.0/16') and count['mapping.test.']==0,
+                          {'address':addr(fake),'fixture_queries':count['mapping.test.']})
                 raw=query(port, f'flags.{alg}.example', cd=True)
                 validated=query(port, f'flags.{alg}.example')
                 check(alg+': CD separation', addr(raw)=='192.0.2.2' and addr(validated)=='192.0.2.1',
@@ -171,7 +205,7 @@ def main():
                     {'tag':'main','type':'sequence','args':[{'exec':'$cache'},
                         {'matches':['has_resp'],'exec':'accept'},{'exec':'$forward'}]},
                     {'type':'tcp_server','args':{'entry':'main','listen':'127.0.0.1:17103'}}]}
-                path=d/'mosdns.yaml';path.write_text(json.dumps(cfg))
+                path=d/'mosdns.yaml';path.write_text(yaml.safe_dump(cfg))
                 processes.append(start([a.mosdns,'start','-c',str(path)],d,'mosdns'))
                 r=query(17103,'do.mosdns.example','TXT')
                 check('mosdns: DO reaches upstream',addr(r)=='"do=1"',addr(r))
@@ -182,8 +216,14 @@ def main():
                 except dns.query.BadResponse:
                     check('mosdns: A/CAA cache separation',False,'cached response has wrong question type')
             result={'utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    'scope':'official host binaries, synthetic loopback fixtures; no routers',
-                    'disable_cache':a.disable_cache,'checks':checks}
+                    'scope':'host binary, synthetic loopback fixtures; no routers',
+                    'mihomo_binary_sha256':hashlib.sha256(Path(a.mihomo).read_bytes()).hexdigest(),
+                    'disable_cache':a.disable_cache,'enhanced_mode':a.enhanced_mode,
+                    'cache_max_size':a.cache_max_size,
+                    'managed_dns_env':os.environ.get('MIHOMO_MANAGED_DNS')=='1','checks':checks}
+            result['patched_upstream_relay']=bool(a.upstream_mihomo)
+            if a.upstream_mihomo:
+                result['upstream_relay_sha256']=hashlib.sha256(Path(a.upstream_mihomo).read_bytes()).hexdigest()
             a.output.write_text(json.dumps(result,indent=2)+'\n')
             print(json.dumps({'passed':sum(c['passed'] for c in checks),'total':len(checks),
                               'failed':[c['test'] for c in checks if not c['passed']]}))

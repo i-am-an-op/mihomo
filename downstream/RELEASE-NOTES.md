@@ -1,7 +1,3 @@
-Candidate for review; not deployed or approved for production.
+Managed frontend candidate rc.2. Adds opt-in MIHOMO_MANAGED_DNS=1: startup requires delegation without the forwarded-answer cache; configuration replacement, PATCH, core upgrade and API restart return HTTP 409 before mutation. Proxy selection and read APIs remain available. A separate transport should leave the opt-in off. The capabilities flag identifies this contract; artifact verification and behavioral tests remain required.
 
-- Add opt-in `dns.disable-cache` to delegate forwarded-answer caching and query isolation to an external resolver while retaining Fake-IP mapping and application routing.
-- Update the inherited Go networking dependency set to patched versions and pin the supported official Go toolchain.
-- Include native amd64/arm64 regressions, byte-comparison builds, source archives, checksums, module inventory and build attestations.
-
-See `downstream/README.md` for scope, verification, maintenance and rollback. Full router canary, reboot, load and client IPv6 acceptance remain deployment gates. Existing upstream behavior remains the default unless `dns.disable-cache: true` is explicitly configured.
+Native amd64/arm64 CI includes managed API, Fake-IP and forwarded DNS fixtures. Candidate only: no router deployment or production acceptance. The integration repository owns boot, offline recovery, profile staging and whole-generation transactions. This source change alone cannot prevent an external updater from replacing the executable.

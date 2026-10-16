@@ -4,6 +4,6 @@
   "commit": "88dcbf7f1614a67c3b36b848ee3592dfa92ada36",
   "go": "1.26.9",
   "govulncheck": "v1.9.0",
-  "downstream_version": "v1.19.32-dns.1-rc.1",
+  "downstream_version": "v1.19.32-dns.1-rc.2",
   "owner": "i-am-an-op"
 }
