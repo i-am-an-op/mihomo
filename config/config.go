@@ -619,6 +619,9 @@ func UnmarshalRawConfig(buf []byte) (*RawConfig, error) {
 	if err := yaml.Unmarshal(buf, rawCfg); err != nil {
 		return nil, err
 	}
+	if C.ManagedDNSFrontend() && (!rawCfg.DNS.Enable || !rawCfg.DNS.DisableCache) {
+		return nil, errors.New("managed DNS frontend requires dns.enable and dns.disable-cache")
+	}
 
 	return rawCfg, nil
 }

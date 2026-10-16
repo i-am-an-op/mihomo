@@ -32,6 +32,7 @@ import (
 )
 
 var (
+	managedCapabilities           bool
 	version                       bool
 	testConfig                    bool
 	geodataMode                   bool
@@ -74,6 +75,7 @@ func init() {
 	flag.BoolVar(&geodataMode, "m", false, "set geodata mode")
 	flag.BoolVar(&version, "v", false, "show current version of mihomo")
 	flag.BoolVar(&testConfig, "t", false, "test configuration and exit")
+	flag.BoolVar(&managedCapabilities, "dns-managed-capabilities", false, "show downstream DNS integration contract")
 	flag.Parse()
 }
 
@@ -113,6 +115,10 @@ func main() {
 		return
 	}
 
+	if managedCapabilities {
+		fmt.Println(`{"schema":1,"dns_disable_cache":true,"managed_frontend":true,"mutation_guard":1}`)
+		return
+	}
 	if version {
 		fmt.Printf("Mihomo Meta %s %s %s with %s %s\n",
 			C.Version, runtime.GOOS, runtime.GOARCH, runtime.Version(), C.BuildTime)

@@ -15,7 +15,7 @@ func ruleRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Get("/", getRules)
 	if !embedMode { // disallow update/patch rules in embed mode
-		r.Patch("/disable", disableRules)
+		r.Patch("/disable", managedDNSMutation(disableRules))
 	}
 	return r
 }

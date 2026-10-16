@@ -17,7 +17,7 @@ import (
 
 func restartRouter() http.Handler {
 	r := chi.NewRouter()
-	r.Post("/", restart)
+	r.Post("/", managedDNSMutation(restart))
 	return r
 }
 

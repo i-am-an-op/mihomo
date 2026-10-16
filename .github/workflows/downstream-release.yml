@@ -66,7 +66,9 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install --require-hashes --only-binary=:all: -r downstream/requirements.txt
-          .venv/bin/python downstream/protocol_test.py --mihomo "dist/mihomo-linux-$ARCH" --disable-cache --expect-fixed --output "dist/protocol-$ARCH.json"
+          .venv/bin/python downstream/protocol_test.py --mihomo "dist/mihomo-linux-$ARCH" --disable-cache --enhanced-mode fake-ip --expect-fixed --output "dist/protocol-$ARCH.json"
+          .venv/bin/python downstream/managed_api_test.py --binary "dist/mihomo-linux-$ARCH" --output "dist/managed-api-$ARCH.json"
+          MIHOMO_MANAGED_DNS=1 .venv/bin/python downstream/protocol_test.py --mihomo "dist/mihomo-linux-$ARCH" --disable-cache --enhanced-mode fake-ip --expect-fixed --output "dist/managed-wire-$ARCH.json"
       - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
         with:
           subject-path: dist/*

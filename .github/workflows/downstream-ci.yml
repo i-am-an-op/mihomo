@@ -41,7 +41,7 @@ jobs:
         # Match Go's default budget used by upstream; retain every test.
         run: go test -tags with_gvisor -timeout 10m ./...
       - name: DNS and configuration race tests
-        run: go test -race -tags with_gvisor ./dns ./config ./hub/executor
+        run: go test -race -tags with_gvisor ./dns ./config ./hub/executor ./hub/route
       - name: Reproducible native build and module inventory
         run: python3 downstream/package.py
       - name: Wire regressions against the actual binary
@@ -50,7 +50,9 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install --require-hashes --only-binary=:all: -r downstream/requirements.txt
-          .venv/bin/python downstream/protocol_test.py --mihomo "dist/mihomo-linux-$ARCH" --disable-cache --expect-fixed --output protocol-results.json
+          .venv/bin/python downstream/protocol_test.py --mihomo "dist/mihomo-linux-$ARCH" --disable-cache --enhanced-mode fake-ip --expect-fixed --output protocol-results.json
+          .venv/bin/python downstream/managed_api_test.py --binary "dist/mihomo-linux-$ARCH" --output "dist/managed-api-$ARCH.json"
+          MIHOMO_MANAGED_DNS=1 .venv/bin/python downstream/protocol_test.py --mihomo "dist/mihomo-linux-$ARCH" --disable-cache --enhanced-mode fake-ip --expect-fixed --output "dist/managed-wire-$ARCH.json"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
