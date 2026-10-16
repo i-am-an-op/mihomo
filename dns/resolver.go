@@ -46,6 +46,7 @@ type Resolver struct {
 	fallbackLazyQuery     bool
 	group                 singleflight.Group[*D.Msg]
 	cache                 dnsCache
+	disableCache          bool
 	policy                []dnsPolicy
 	defaultResolver       *Resolver
 }
@@ -152,6 +153,20 @@ func (r *Resolver) ResolveECH(ctx context.Context, host string) ([]byte, error) 
 func (r *Resolver) ExchangeContext(ctx context.Context, m *D.Msg) (msg *D.Msg, err error) {
 	if len(m.Question) == 0 {
 		return nil, errors.New("should have one question at least")
+	}
+	if r.disableCache {
+		// Delegate wire-answer caching and validation to the configured resolver.
+		// Bypass singleflight too: the upstream question-only key conflates CD,
+		// DO, AD and EDNS options. Fake-IP mappings are separate and unaffected.
+		if isIPRequest(m.Question[0]) {
+			return r.ipExchange(ctx, m)
+		}
+		clients := r.main
+		if matched := r.matchPolicy(m); len(matched) != 0 {
+			clients = matched
+		}
+		msg, _, err = batchExchange(ctx, clients, m)
+		return
 	}
 	continueFetch := false
 	defer func() {
@@ -483,6 +498,7 @@ type Config struct {
 	ProxyServerPolicy    []Policy
 	CacheAlgorithm       string
 	CacheMaxSize         int
+	DisableCache         bool
 }
 
 func (config Config) newCache() dnsCache {
@@ -525,9 +541,10 @@ func NewResolverFromClient(client dnsClient) *Resolver {
 
 func NewResolver(config Config) (rs Resolvers) {
 	defaultResolver := &Resolver{
-		main:        transform(config.Default, nil),
-		cache:       config.newCache(),
-		ipv6Timeout: time.Duration(config.IPv6Timeout) * time.Millisecond,
+		main:         transform(config.Default, nil),
+		cache:        config.newCache(),
+		disableCache: config.DisableCache,
+		ipv6Timeout:  time.Duration(config.IPv6Timeout) * time.Millisecond,
 	}
 
 	var nameServerCache []struct {
@@ -595,31 +612,34 @@ func NewResolver(config Config) (rs Resolvers) {
 	}
 
 	r := &Resolver{
-		ipv6:        config.IPv6,
-		main:        cacheTransform(config.Main),
-		cache:       config.newCache(),
-		ipv6Timeout: time.Duration(config.IPv6Timeout) * time.Millisecond,
-		policy:      makePolicy(config.Policy),
+		ipv6:         config.IPv6,
+		main:         cacheTransform(config.Main),
+		cache:        config.newCache(),
+		disableCache: config.DisableCache,
+		ipv6Timeout:  time.Duration(config.IPv6Timeout) * time.Millisecond,
+		policy:       makePolicy(config.Policy),
 	}
 	r.defaultResolver = defaultResolver
 	rs.Resolver = r
 
 	if len(config.ProxyServer) != 0 {
 		rs.ProxyResolver = &Resolver{
-			ipv6:        config.IPv6,
-			main:        cacheTransform(config.ProxyServer),
-			cache:       config.newCache(),
-			ipv6Timeout: time.Duration(config.IPv6Timeout) * time.Millisecond,
-			policy:      makePolicy(config.ProxyServerPolicy),
+			ipv6:         config.IPv6,
+			main:         cacheTransform(config.ProxyServer),
+			cache:        config.newCache(),
+			disableCache: config.DisableCache,
+			ipv6Timeout:  time.Duration(config.IPv6Timeout) * time.Millisecond,
+			policy:       makePolicy(config.ProxyServerPolicy),
 		}
 	}
 
 	if len(config.DirectServer) != 0 {
 		rs.DirectResolver = &Resolver{
-			ipv6:        config.IPv6,
-			main:        cacheTransform(config.DirectServer),
-			cache:       config.newCache(),
-			ipv6Timeout: time.Duration(config.IPv6Timeout) * time.Millisecond,
+			ipv6:         config.IPv6,
+			main:         cacheTransform(config.DirectServer),
+			cache:        config.newCache(),
+			disableCache: config.DisableCache,
+			ipv6Timeout:  time.Duration(config.IPv6Timeout) * time.Millisecond,
 		}
 		if config.DirectFollowPolicy {
 			rs.DirectResolver.policy = r.policy

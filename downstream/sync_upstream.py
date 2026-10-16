@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a review PR for a new stable upstream release. Never deploy or merge it.
+"""Create a review branch for a new stable upstream release. Never deploy or merge it.
 
 Run only from the trusted default branch. This script never executes fetched code.
 On conflicts it fails visibly; the maintainer resolves them on the candidate branch.
@@ -24,9 +24,9 @@ if latest['draft'] or latest['prerelease'] or not re.fullmatch(r'v\d+\.\d+\.\d+'
 if tag==pin['tag']:
     print('Already tracking latest stable release:',tag);raise SystemExit(0)
 branch='upstream-update/'+tag
-existing=json.loads(run('gh','pr','list','--repo',repo,'--head',branch,'--state','all','--json','number,state'))
+existing=run('git','ls-remote','--heads','origin','refs/heads/'+branch)
 if existing:
-    print('Existing update PR needs review:',existing);raise SystemExit(0)
+    print('Existing update branch needs review:',branch);raise SystemExit(0)
 base=run('git','rev-parse','HEAD')
 run('git','fetch','--no-tags','https://github.com/MetaCubeX/mihomo.git','refs/tags/'+tag)
 upstream=run('git','rev-parse','FETCH_HEAD^{commit}')
@@ -49,12 +49,10 @@ Path('downstream/UPSTREAM.json').write_text(json.dumps(pin,indent=2)+'\n')
 run('git','add','downstream/UPSTREAM.json')
 run('git','-c','user.name=github-actions[bot]','-c','user.email=41898282+github-actions[bot]@users.noreply.github.com','commit','-m','Review upstream '+tag)
 run('git','push','origin','HEAD:refs/heads/'+branch)
-body=f'''Merge upstream {tag} ({upstream}) into the maintained DNS branch.
-
-No automatic merge, release or router deployment occurs. Upstream workflow changes are deliberately excluded and require separate review. Review dependency changes, cache-bypass behavior, upstream release notes, full DNS integration and rollback compatibility before promotion.
-'''
-with tempfile.NamedTemporaryFile(mode='w',suffix='.md') as f:
-    f.write(body);f.flush()
-    print(run('gh','pr','create','--repo',repo,'--base','dns-maintained','--head',branch,'--title','Review upstream '+tag,'--body-file',f.name))
+url=f'https://github.com/{repo}/compare/dns-maintained...{branch}?expand=1'
+print('Review and open a PR:',url)
+if os.environ.get('GITHUB_STEP_SUMMARY'):
+    with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+        f.write(f'Upstream {tag} ({upstream}) prepared for [owner review]({url}). No promotion or deployment occurred.\n')
 # Token-created pushes may not start normal CI; explicitly dispatch read-only CI.
 run('gh','workflow','run','downstream-ci.yml','--repo',repo,'--ref',branch)
