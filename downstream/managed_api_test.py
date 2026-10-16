@@ -16,7 +16,7 @@ def main():
     checks=[]
     def record(name,ok,detail):checks.append({'test':name,'passed':bool(ok),'observed':detail})
     with tempfile.TemporaryDirectory(prefix='managed-api-') as td:
-        root=Path(td);cfg={'mode':'rule','external-controller':'127.0.0.1:19390','rules':['MATCH,DIRECT'],
+        root=Path(td);cfg={'mode':'rule','external-controller':'127.0.0.1:19390','rules':['RULE-SET,fixture,DIRECT','MATCH,DIRECT'],
             'rule-providers':{'fixture':{'type':'inline','behavior':'domain','payload':['example.org']}},'proxy-groups':[{'name':'TEST','type':'select','proxies':['DIRECT']}],
             'dns':{'enable':True,'listen':'127.0.0.1:19391','disable-cache':True,
             'nameserver':['127.0.0.1:19392'],'default-nameserver':['127.0.0.1:19392']}}
@@ -31,15 +31,17 @@ def main():
                 with urllib.request.urlopen(req,timeout=2) as response:return response.status
             except urllib.error.HTTPError as error:return error.code
         try:
-            for _ in range(40):
+            for _ in range(200):
                 try:
-                    if request('GET','/version')==200:break
+                    if request('GET','/version')==200 and request('GET','/proxies/TEST')==200 and request('GET','/providers/rules/fixture')==200:break
+                    time.sleep(.05)
                 except OSError:time.sleep(.05)
             record('read-only version API available',request('GET','/version')==200,{})
             for method,target in [('PUT','/configs'),('PATCH','/configs'),('POST','/upgrade'),('POST','/restart'),('POST','/configs/geo'),('POST','/upgrade/geo'),('PATCH','/rules/disable'),('PUT','/providers/rules/fixture')]:
                 status=request(method,target,{})
                 record(method+' '+target+' rejected before mutation',status==409,{'status':status})
-            record('proxy selection retained',request('PUT','/proxies/TEST',{'name':'DIRECT'})==204,{})
+            selection=request('PUT','/proxies/TEST',{'name':'DIRECT'})
+            record('proxy selection retained',selection==204,{'status':selection})
             record('process survives rejected mutations',proc.poll() is None and request('GET','/version')==200,{})
         finally:proc.terminate();proc.wait(timeout=5)
         cfg['dns']['disable-cache']=False;path.write_text(json.dumps(cfg))
