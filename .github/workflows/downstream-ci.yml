@@ -32,6 +32,8 @@ jobs:
         with:
           go-version: '1.26.9'
           cache: false
+      - name: Upstream synchronization failure and recovery fixtures
+        run: python3 downstream/sync_test.py
       - name: Verify dependencies
         run: go mod download && go mod verify
       - name: Upstream tests with retained gVisor support
