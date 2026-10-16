@@ -1,0 +1,77 @@
+name: Build reviewed draft release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: downstream-release
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'i-am-an-op/mihomo' && github.ref == 'refs/heads/dns-maintained'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Require successful CI for this source commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --workflow downstream-ci.yml --commit "$GITHUB_SHA" --json conclusion,headSha > ci.json
+          python3 -c 'import json,os; assert any(r["conclusion"]=="success" and r["headSha"]==os.environ["GITHUB_SHA"] for r in json.load(open("ci.json"))), "No successful CI on this exact commit"'
+      - id: tag
+        name: Create an unpublished candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(python3 -c 'import json,re; v=json.load(open("downstream/UPSTREAM.json"))["downstream_version"]; assert re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+-dns\.[0-9]+-rc\.[0-9]+",v); print(v)')
+          gh release create "$VERSION" --target "$GITHUB_SHA" --draft --prerelease --title "$VERSION" --notes-file downstream/RELEASE-NOTES.md
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: amd64, runner: ubuntu-24.04}
+          - {arch: arm64, runner: ubuntu-24.04-arm}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      GOTOOLCHAIN: local
+      SKIP_INTEROP_TEST: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: '1.26.9'
+          cache: false
+      - run: go mod download && go mod verify
+      - run: python3 downstream/package.py
+      - name: Test the native release binary
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --require-hashes --only-binary=:all: -r downstream/requirements.txt
+          .venv/bin/python downstream/protocol_test.py --mihomo "dist/mihomo-linux-$ARCH" --disable-cache --expect-fixed --output "dist/protocol-$ARCH.json"
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: dist/*
+      - name: Upload without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" dist/*

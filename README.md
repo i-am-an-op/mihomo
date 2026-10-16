@@ -1,3 +1,5 @@
+> **Independent DNS downstream maintained by i-am-an-op.** See [scope, tests, upstream synchronization and releases](downstream/README.md). Official upstream: [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo).
+
 <h1 align="center">
   <img src="Meta.png" alt="Meta Kennel" width="200">
   <br>Meta Kernel<br>

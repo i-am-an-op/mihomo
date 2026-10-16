@@ -26,3 +26,10 @@ test/config/cache*
 /output
 .vscode/
 .fleet/
+# Downstream build and test output
+dist/
+.venv/
+protocol-results.json
+govulncheck.json
+__pycache__/
+*.pyc
